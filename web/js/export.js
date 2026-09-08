@@ -6,7 +6,6 @@ import {
   buildEpisodeXml, buildSeasonXml, buildTvshowXml, posterCandidates,
   renderXml, safeFilename, seasonFolderName,
 } from './nfo.js';
-import { fileExists, getSubdirectory, writeBinaryFile, writeTextFile } from './fs.js';
 
 export const DEFAULT_OPTIONS = {
   ref: '',
@@ -24,6 +23,7 @@ export const DEFAULT_OPTIONS = {
   downloadPoster: false,
   overwrite: true,
   yearInFolder: true,
+  outputMode: 'zip',
   tvdbId: '',
   tmdbId: '',
   imdbId: '',
@@ -32,7 +32,7 @@ export const DEFAULT_OPTIONS = {
 };
 
 export async function runExport(options, {
-  outputRoot,
+  sink,
   log = () => {},
   progress = () => {},
   signal = null,
@@ -53,6 +53,7 @@ export async function runExport(options, {
     synopsesFound: 0,
     synopsesMissing: 0,
     warnings: [],
+    archive: null,
   };
 
   log(`Fetching '${opts.ref}' from ${source.label} ...`);
@@ -154,13 +155,12 @@ export async function runExport(options, {
     }
   }
 
-  const showFolder = await getSubdirectory(outputRoot, folderName);
-
   if (opts.writeTvshow) {
-    if (!opts.overwrite && (await fileExists(showFolder, 'tvshow.nfo'))) {
+    const path = `${folderName}/tvshow.nfo`;
+    if (!opts.overwrite && (await sink.exists(path))) {
       log('Skipped tvshow.nfo (already exists)');
     } else {
-      await writeTextFile(showFolder, 'tvshow.nfo', renderXml(buildTvshowXml(show, opts, cast)));
+      await sink.writeText(path, renderXml(buildTvshowXml(show, opts, cast)));
       log('Wrote tvshow.nfo');
     }
   }
@@ -170,7 +170,7 @@ export async function runExport(options, {
     if (candidates.length) {
       let existing = null;
       for (const ext of ['.jpg', '.webp', '.png']) {
-        if (await fileExists(showFolder, `folder${ext}`)) {
+        if (await sink.exists(`${folderName}/folder${ext}`)) {
           existing = `folder${ext}`;
           break;
         }
@@ -183,7 +183,7 @@ export async function runExport(options, {
           const suffix = (new URL(url).pathname.match(/\.[a-z0-9]+$/i) || ['.jpg'])[0];
           try {
             const bytes = await source.downloadBytes(url);
-            await writeBinaryFile(showFolder, `folder${suffix}`, bytes);
+            await sink.writeBytes(`${folderName}/folder${suffix}`, bytes);
             log(`Downloaded folder${suffix}`);
             lastError = null;
             break;
@@ -208,14 +208,14 @@ export async function runExport(options, {
   for (const season of seasonKeys) {
     const seasonEpisodes = grouped.get(season);
     const folder = seasonFolderName(season);
-    const seasonFolder = await getSubdirectory(showFolder, folder);
     result.seasonFolders.push(folder);
 
     if (opts.writeSeasonNfo) {
-      if (!opts.overwrite && (await fileExists(seasonFolder, 'season.nfo'))) {
+      const path = `${folderName}/${folder}/season.nfo`;
+      if (!opts.overwrite && (await sink.exists(path))) {
         log(`Skipped ${folder}/season.nfo (already exists)`);
       } else {
-        await writeTextFile(seasonFolder, 'season.nfo', renderXml(buildSeasonXml(show, season)));
+        await sink.writeText(path, renderXml(buildSeasonXml(show, season)));
         log(`Wrote ${folder}/season.nfo`);
       }
     }
@@ -234,8 +234,9 @@ export async function runExport(options, {
       if (episodeNumber < 0) episodeNumber = index + 1 + opts.episodeOffset;
 
       const name = `${safeFilename(showTitle)} S${pad2(season)}E${pad2(episodeNumber)}.nfo`;
+      const path = `${folderName}/${folder}/${name}`;
 
-      if (!opts.overwrite && (await fileExists(seasonFolder, name))) {
+      if (!opts.overwrite && (await sink.exists(path))) {
         result.episodesSkipped += 1;
         progress(done, total, `Skipped S${pad2(season)}E${pad2(episodeNumber)}`);
         continue;
@@ -246,9 +247,8 @@ export async function runExport(options, {
         else result.synopsesMissing += 1;
       }
 
-      await writeTextFile(
-        seasonFolder,
-        name,
+      await sink.writeText(
+        path,
         renderXml(
           buildEpisodeXml(episode, show, showTitle, season, episodeNumber, source.hasSeasons),
         ),
@@ -276,6 +276,8 @@ export async function runExport(options, {
     );
   }
 
+  result.archive = await sink.finish(`${folderName}.zip`);
+
   log('');
   log(
     `Done. ${result.episodesWritten} episode NFOs written across ` +
@@ -283,6 +285,11 @@ export async function runExport(options, {
       (result.episodesSkipped ? `, ${result.episodesSkipped} skipped` : '') +
       '.',
   );
+  if (result.archive) {
+    const kb = Math.max(1, Math.round(result.archive.bytes / 1024));
+    log(`Downloaded ${folderName}.zip - ${result.archive.files} files, ${kb} KB.`);
+    log('Extract it into your Emby library root, keeping the folder structure.');
+  }
   for (const warning of result.warnings) log(`Warning: ${warning}`);
   return result;
 }

@@ -5,16 +5,14 @@ import { SOURCE_CLASSES, getSource } from './sources/index.js';
 import { CAST_LANGUAGES } from './nfo.js';
 import { DEFAULT_OPTIONS, runExport } from './export.js';
 import { Cancelled } from './util.js';
-import {
-  ensurePermission, isSupported, pickOutputRoot, restoreOutputRoot,
-} from './fs.js';
+import { FolderSink, ZipSink, folderModeSupported } from './sink.js';
+import { ensurePermission, pickOutputRoot, restoreOutputRoot } from './fs.js';
 
 const CONFIG_KEY = 'nfoExporter.config';
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
-  unsupported: $('unsupported'),
   settingsToggle: $('settings-toggle'),
   settings: $('settings'),
   proxyUrl: $('proxy-url'),
@@ -27,6 +25,9 @@ const els = {
   results: $('results'),
   refLabel: $('ref-label'),
   ref: $('ref'),
+  folderOption: $('folder-option'),
+  folderRow: $('folder-row'),
+  folderUnavailable: $('folder-unavailable'),
   pickFolder: $('pick-folder'),
   folderName: $('folder-name'),
   showName: $('show-name'),
@@ -90,10 +91,17 @@ function currentSource() {
   return document.querySelector('input[name="source"]:checked').value;
 }
 
+function currentOutputMode() {
+  const checked = document.querySelector('input[name="output-mode"]:checked');
+  const mode = checked ? checked.value : 'zip';
+  return mode === 'folder' && !folderModeSupported() ? 'zip' : mode;
+}
+
 function readForm() {
   return {
     ref: els.ref.value.trim(),
     source: currentSource(),
+    outputMode: currentOutputMode(),
     season: Number(els.season.value) || 0,
     showName: els.showName.value.trim(),
     episodeOffset: Number(els.episodeOffset.value) || 0,
@@ -133,6 +141,10 @@ function loadConfig() {
   const radio = document.querySelector(`input[name="source"][value="${values.source}"]`);
   if (radio) radio.checked = true;
 
+  const mode = values.outputMode === 'folder' && folderModeSupported() ? 'folder' : 'zip';
+  const modeRadio = document.querySelector(`input[name="output-mode"][value="${mode}"]`);
+  if (modeRadio) modeRadio.checked = true;
+
   els.season.value = values.season;
   els.episodeOffset.value = values.episodeOffset;
   for (const [key, node] of Object.entries(CHECKBOXES)) {
@@ -150,6 +162,7 @@ function loadConfig() {
 
   els.proxyUrl.value = getProxyUrl();
   updateRefHint();
+  updateOutputMode();
 }
 
 function updateRefHint() {
@@ -161,6 +174,10 @@ function updateRefHint() {
       : currentSource() === 'tvdb'
         ? 'e.g. attack-on-titan'
         : 'e.g. List of Attack on Titan episodes';
+}
+
+function updateOutputMode() {
+  els.folderRow.hidden = currentOutputMode() !== 'folder';
 }
 
 // --------------------------------------------------------------------------- //
@@ -244,6 +261,19 @@ async function chooseFolder() {
 // Export
 // --------------------------------------------------------------------------- //
 
+async function buildSink(mode) {
+  if (mode !== 'folder') return new ZipSink();
+  if (!outputRoot) {
+    log('Choose an output folder first, or switch to ZIP download.');
+    return null;
+  }
+  if (!(await ensurePermission(outputRoot))) {
+    log('Write permission for that folder was declined.');
+    return null;
+  }
+  return new FolderSink(outputRoot);
+}
+
 async function doExport() {
   const options = readForm();
   const cls = SOURCE_CLASSES[options.source];
@@ -253,14 +283,9 @@ async function doExport() {
     log(`Could not read a ${cls.refHint} from "${options.ref}".`);
     return;
   }
-  if (!outputRoot) {
-    log('Choose an output folder first.');
-    return;
-  }
-  if (!(await ensurePermission(outputRoot))) {
-    log('Write permission for that folder was declined.');
-    return;
-  }
+
+  const sink = await buildSink(options.outputMode);
+  if (!sink) return;
 
   saveConfig();
   clearLog();
@@ -271,7 +296,7 @@ async function doExport() {
   try {
     const result = await runExport(
       { ...options, ref },
-      { outputRoot, log, progress: setProgress, signal: controller.signal },
+      { sink, log, progress: setProgress, signal: controller.signal },
     );
     setProgress(1, 1, `${result.episodesWritten} files written`);
   } catch (err) {
@@ -333,6 +358,13 @@ function bind() {
     });
   }
 
+  for (const radio of document.querySelectorAll('input[name="output-mode"]')) {
+    radio.addEventListener('change', () => {
+      updateOutputMode();
+      saveConfig();
+    });
+  }
+
   els.searchForm.addEventListener('submit', doSearch);
   els.pickFolder.addEventListener('click', chooseFolder);
   els.exportButton.addEventListener('click', doExport);
@@ -349,16 +381,16 @@ function bind() {
 }
 
 async function boot() {
-  if (!isSupported()) {
-    els.unsupported.hidden = false;
-    els.pickFolder.disabled = true;
-    els.exportButton.disabled = true;
+  const canWriteFolders = folderModeSupported();
+  if (!canWriteFolders) {
+    els.folderOption.hidden = true;
+    els.folderUnavailable.hidden = false;
   }
 
   loadConfig();
   bind();
 
-  if (isSupported()) {
+  if (canWriteFolders) {
     // Silent restore only. If permission has lapsed, "Choose folder" re-grants
     // it on click — requestPermission is refused without a user gesture.
     const restored = await restoreOutputRoot();
