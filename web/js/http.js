@@ -129,7 +129,7 @@ export class WebClient {
       // request so no preflight is needed there.
       const headers = {};
       if (routed !== url) headers['X-Proxy-Accept'] = this.constructor.accept;
-      if (contentType) headers['Content-Type'] = contentType;
+    
 
       let retryable = false;
       try {
