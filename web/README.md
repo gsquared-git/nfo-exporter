@@ -131,6 +131,31 @@ folder picker works there too.
 Options persist in `localStorage`, the same job `nfo_exporter_config.json` does
 for the desktop version. The proxy URL is stored the same way.
 
+### Episode numbering
+
+**Per season** files each episode as its source numbers it — `Season 02/Show
+S02E11.nfo`. This is what the desktop tool does and the only thing it does.
+
+**Absolute** collapses every real season into `Season 01` as one continuous run,
+so season 2 episode 11 becomes `Season 01/Show S01E37.nfo`. The real values are
+not lost: they go into `<displayseason>` and `<displayepisode>`, which is what
+those tags are for, so Emby files the episode absolutely and still shows it as
+S2E11. Specials stay in `Season 00` with their own numbers — folding them into
+the run would shift every episode after them.
+
+Where the absolute number comes from matters:
+
+| Source | Absolute number |
+| --- | --- |
+| **Wikipedia** | its own **No. overall** column, which the parser now keeps even when the in-season column wins |
+| **TheTVDB** | counted in air order — the `allseasons/official` page publishes no series-wide numbers |
+| **MyAnimeList** | already effectively absolute, since MAL has no seasons at all |
+
+The source's own number is preferred over a recomputed count, because articles
+disagree on whether recaps and specials count toward the total; the log says
+which happened. **Episode offset** applies to the filed number only, never to
+the displayed one — it is a filing correction, not a claim about the show.
+
 ### The recipe for a long anime series still works
 
 Run MAL first for a rich `tvshow.nfo`, cast and poster. Then run Wikipedia over
