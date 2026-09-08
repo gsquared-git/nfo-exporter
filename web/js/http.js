@@ -124,12 +124,12 @@ export class WebClient {
       await this.limiter.acquire();
       this.checkCancelled();
 
-      // Any non-simple header forces a CORS preflight. The Worker answers
-      // OPTIONS; Wikipedia is fetched directly and is left with a simple
-      // request so no preflight is needed there.
+      // Deliberately no custom headers on GETs. Any non-simple header forces a
+      // CORS preflight, which would double the request count on a long export;
+      // the Worker already sends a sensible Accept upstream on our behalf.
+      // Content-Type on the TVDB search POST does preflight, unavoidably.
       const headers = {};
-      if (routed !== url) headers['X-Proxy-Accept'] = this.constructor.accept;
-    
+      if (contentType) headers['Content-Type'] = contentType;
 
       let retryable = false;
       try {
@@ -193,30 +193,3 @@ export class WebClient {
       return JSON.parse(text);
     } catch (err) {
       throw new ScrapeError(`Bad JSON from ${url}: ${err.message}`);
-    }
-  }
-
-  /** Fetch an image as bytes, for writing straight into the output folder. */
-  async downloadBytes(url) {
-    this.checkCancelled();
-    const buffer = await this.request(url, { retries: 2, raw: true });
-    return new Uint8Array(buffer);
-  }
-}
-
-/** Quick reachability check for the Settings panel. */
-export async function testProxy(url) {
-  const base = url.replace(/\?.*$/, '').replace(/\/+$/, '');
-  const target = 'https://myanimelist.net/anime/1';
-  const response = await fetch(`${base}/?url=${encodeURIComponent(target)}`, {
-    method: 'GET',
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Proxy replied HTTP ${response.status}: ${text.slice(0, 200)}`);
-  }
-  if (!/Cowboy Bebop|myanimelist/i.test(text)) {
-    throw new Error('Proxy replied, but the page did not look like MyAnimeList.');
-  }
-  return true;
-}
