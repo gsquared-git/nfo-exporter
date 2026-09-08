@@ -6,5 +6,5 @@ compatibility_date = "2024-11-01"
 # Leave it out entirely to accept any origin — the host allowlist inside the
 # Worker already limits what it can reach.
 #
-# [vars]
-# ALLOWED_ORIGINS = "https://YOUR-USERNAME.github.io"
+ [vars]
+ ALLOWED_ORIGINS = "https://gsquared-git.github.io/"
