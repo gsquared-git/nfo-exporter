@@ -12,7 +12,9 @@ web/
     util.js           text helpers, models          (port of the top of sources.py)
     http.js           rate limiting, retries, proxy routing  (port of WebClient)
     nfo.js            XML builders                  (port of the XML half of nfo_exporter.py)
+    zip.js            dependency-free ZIP writer
     fs.js             File System Access output folder
+    sink.js           ZipSink / FolderSink behind one interface
     export.js         the export run                (port of run_export)
     app.js            UI wiring                     (replaces launch_gui)
     sources/          mal.js, tvdb.js, wikipedia.js
@@ -30,14 +32,21 @@ built by the other.
 
 ## What's different from the desktop tool
 
-**Output goes through a folder handle, not a path.** The browser asks you to
-pick a folder once; it is remembered in IndexedDB, so later visits just need a
-confirmation click. Everything under it — `<Show> (Year)/Season 01/<Show>
-S01E01.nfo` — is written exactly as before.
+**Two ways out, same tree either way.**
 
-This uses the File System Access API, which is **Chromium only**: Chrome, Edge,
-Brave, Opera. Firefox and Safari have not shipped it and the app says so on
-load.
+*ZIP download* (the default, every browser) collects the whole export and hands
+over one `<Show> (Year).zip`. Extract it into your Emby library root. `zip.js`
+writes the archive by hand — no library, no CDN — deflating with the browser's
+built-in `CompressionStream` where available and storing uncompressed where not.
+
+*Folder write* (Chrome, Edge, Brave, Opera) writes straight into a folder you
+pick, via the File System Access API, so there is nothing to unzip. The handle
+is remembered in IndexedDB; later visits need one confirmation click. Firefox
+and Safari have not shipped this API, so the option is simply hidden there.
+
+Both go through the same `sink.js` interface, so the export code does not know
+or care which is in use. The **Overwrite existing files** option only means
+anything in folder mode — nothing pre-exists inside a fresh archive.
 
 **MyAnimeList and TheTVDB need a proxy.** Neither site sends an
 `Access-Control-Allow-Origin` header, so a browser refuses to let the page read
@@ -116,7 +125,7 @@ folder picker works there too.
    Wikipedia for English titles with directors, writers and free plots.
 2. Search, then click a result to fill in the reference. Or paste an id, slug or
    URL directly.
-3. Choose the output folder.
+3. Choose ZIP download or, on a Chromium browser, a folder to write into.
 4. Set options and hit **Export NFO files**.
 
 Options persist in `localStorage`, the same job `nfo_exporter_config.json` does
@@ -133,9 +142,12 @@ alone.
 
 ## Limits worth knowing
 
-- **Chromium only**, as above.
+- **Folder mode is Chromium only**; ZIP works everywhere.
 - **The page must be served over HTTPS** (or localhost). GitHub Pages is HTTPS,
   so this only bites if you self-host over plain HTTP.
+- **A ZIP export is assembled in memory**, so it is bounded by tab memory rather
+  than disk. A 300-episode series is a couple of MB, which is nothing; the
+  archive format itself caps out at 65,535 files.
 - **The tab must stay open.** There is no background worker; a long
   per-episode-detail run needs the tab alive. Browsers throttle timers in
   background tabs, so a backgrounded export gets slower rather than stopping.

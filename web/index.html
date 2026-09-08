@@ -21,11 +21,6 @@
   <button type="button" id="settings-toggle" class="ghost" aria-expanded="false">Settings</button>
 </header>
 
-<div id="unsupported" class="banner error" hidden>
-  <strong>This browser can't write to a folder.</strong>
-  The File System Access API is Chromium-only. Use Chrome, Edge, Brave or Opera —
-  Firefox and Safari have not shipped it.
-</div>
 
 <section id="settings" class="panel settings" hidden>
   <h2>Settings</h2>
@@ -87,15 +82,39 @@
   </section>
 
   <section class="panel">
-    <h2>2 &middot; Choose the output folder</h2>
-    <div class="row">
+    <h2>2 &middot; Where the files go</h2>
+
+    <div class="sources two" role="radiogroup" aria-label="Output mode">
+      <label class="source">
+        <input type="radio" name="output-mode" value="zip" checked>
+        <span class="source-body">
+          <strong>Download a ZIP</strong>
+          <em>One archive per series. Works in every browser. Extract it into your
+            Emby library root afterwards.</em>
+        </span>
+      </label>
+      <label class="source" id="folder-option">
+        <input type="radio" name="output-mode" value="folder">
+        <span class="source-body">
+          <strong>Write into a folder</strong>
+          <em>Straight into a folder you pick — nothing to unzip. Chrome, Edge,
+            Brave and Opera only.</em>
+        </span>
+      </label>
+    </div>
+
+    <div class="row" id="folder-row" hidden>
       <button type="button" id="pick-folder">Choose folder…</button>
       <span id="folder-name" class="status">No folder chosen</span>
     </div>
+
     <p class="hint">
-      Files are written straight into this folder as
-      <code>&lt;Show&gt; (Year)/Season 01/&lt;Show&gt; S01E01.nfo</code>. The browser remembers
-      the folder between visits; it will ask you to confirm access once each session.
+      Either way the layout is the same:
+      <code>&lt;Show&gt; (Year)/Season 01/&lt;Show&gt; S01E01.nfo</code>.
+    </p>
+    <p class="hint" id="folder-unavailable" hidden>
+      This browser has no folder-writing API, so ZIP is the only option here.
+      Chrome, Edge, Brave and Opera can write directly.
     </p>
   </section>
 
@@ -148,7 +167,7 @@
       <label><input type="checkbox" id="write-season-nfo" checked> Write season.nfo</label>
       <label><input type="checkbox" id="include-cast" checked> Include cast</label>
       <label><input type="checkbox" id="download-poster"> Download poster as folder.jpg</label>
-      <label><input type="checkbox" id="overwrite" checked> Overwrite existing files</label>
+      <label><input type="checkbox" id="overwrite" checked> Overwrite existing files <em>(folder mode only)</em></label>
       <label><input type="checkbox" id="year-in-folder" checked> Put the year in the folder name</label>
     </div>
   </section>
