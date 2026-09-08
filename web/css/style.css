@@ -200,6 +200,8 @@ input:focus-visible, select:focus-visible, button:focus-visible {
   margin-bottom: 1.1rem;
 }
 
+.sources.two { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
 .source {
   position: relative;
   display: block;
