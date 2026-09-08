@@ -193,3 +193,30 @@ export class WebClient {
       return JSON.parse(text);
     } catch (err) {
       throw new ScrapeError(`Bad JSON from ${url}: ${err.message}`);
+    }
+  }
+
+  /** Fetch an image as bytes, for writing straight into the output folder. */
+  async downloadBytes(url) {
+    this.checkCancelled();
+    const buffer = await this.request(url, { retries: 2, raw: true });
+    return new Uint8Array(buffer);
+  }
+}
+
+/** Quick reachability check for the Settings panel. */
+export async function testProxy(url) {
+  const base = url.replace(/\?.*$/, '').replace(/\/+$/, '');
+  const target = 'https://myanimelist.net/anime/1';
+  const response = await fetch(`${base}/?url=${encodeURIComponent(target)}`, {
+    method: 'GET',
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Proxy replied HTTP ${response.status}: ${text.slice(0, 200)}`);
+  }
+  if (!/Cowboy Bebop|myanimelist/i.test(text)) {
+    throw new Error('Proxy replied, but the page did not look like MyAnimeList.');
+  }
+  return true;
+}
