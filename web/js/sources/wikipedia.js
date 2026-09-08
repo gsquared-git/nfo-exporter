@@ -166,6 +166,10 @@ export function parseWikiEpisodeTables(html) {
         previous = newEpisode({
           season,
           number,
+          // Keep the overall column even when the in-season one won above; it
+          // is the source's own absolute numbering and cannot be recomputed
+          // reliably (articles differ on whether recaps and specials count).
+          number_absolute: inSeason !== null && overall !== null ? overall : null,
           title,
           title_japanese: japaneseTitle,
           title_romaji: romaji ? stripTags(romaji[1]) : '',
