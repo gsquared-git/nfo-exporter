@@ -28,11 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+            # enablement: true turns Pages on for the repo if it is not already,
+      # instead of failing with "Get Pages site failed ... Not Found".
       - uses: actions/configure-pages@v5
-
-      # Only web/ is published — the Python tool and the Worker source stay in
-      # the repo but are not part of the site.
-      - uses: actions/upload-pages-artifact@v3
+        with:
+          enablement: true
         with:
           path: web
 
