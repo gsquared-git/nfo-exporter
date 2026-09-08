@@ -256,16 +256,27 @@ export function buildSeasonXml(show, season) {
   return root;
 }
 
-export function buildEpisodeXml(episode, show, showTitle, season, episodeNumber, hasSeasons) {
+/**
+ * `season` / `episodeNumber` are how the file is *filed*; `display` is how Emby
+ * should *show* it. They differ only under absolute numbering, where an episode
+ * filed as S01E37 still wants to read as season 2, episode 11. `identSeason`
+ * keeps the uniqueid stable across numbering modes.
+ */
+export function buildEpisodeXml(
+  episode, show, showTitle, season, episodeNumber, hasSeasons,
+  display = null, identSeason = null,
+) {
   const root = element('episodedetails');
+  const shownSeason = display ? display.season : season;
+  const shownEpisode = display ? display.episode : episodeNumber;
 
   sub(root, 'title', episode.title || `Episode ${episodeNumber}`);
   sub(root, 'originaltitle', episode.title_japanese);
   sub(root, 'showtitle', showTitle);
   sub(root, 'season', season);
   sub(root, 'episode', episodeNumber);
-  sub(root, 'displayseason', season);
-  sub(root, 'displayepisode', episodeNumber);
+  sub(root, 'displayseason', shownSeason);
+  sub(root, 'displayepisode', shownEpisode);
 
   const aired = isoDate(episode.aired);
   sub(root, 'aired', aired);
@@ -291,7 +302,10 @@ export function buildEpisodeXml(episode, show, showTitle, season, episodeNumber,
   if (number !== null && number !== undefined) {
     // Namespaced type: a composite like "attack-on-titan-1x1" is not a real
     // provider episode id, and writing it as type="tvdb" would mislead Emby.
-    const ident = hasSeasons ? `${show.ref}-${season}x${number}` : `${show.ref}-${number}`;
+    // Built from the episode's true season so re-exporting the same series
+    // under a different numbering mode does not change its identity.
+    const idSeason = identSeason === null ? season : identSeason;
+    const ident = hasSeasons ? `${show.ref}-${idSeason}x${number}` : `${show.ref}-${number}`;
     sub(root, 'uniqueid', ident, { type: `${show.source || 'source'}episode` });
     sub(root, 'sourceepisodenumber', number);
   }

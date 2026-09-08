@@ -33,6 +33,8 @@ const els = {
   showName: $('show-name'),
   season: $('season'),
   episodeOffset: $('episode-offset'),
+  numbering: $('numbering'),
+  numberingHint: $('numbering-hint'),
   castLanguage: $('cast-language'),
   tvdbId: $('tvdb-id'),
   tmdbId: $('tmdb-id'),
@@ -105,6 +107,7 @@ function readForm() {
     season: Number(els.season.value) || 0,
     showName: els.showName.value.trim(),
     episodeOffset: Number(els.episodeOffset.value) || 0,
+    numbering: els.numbering.value,
     castLanguage: els.castLanguage.value,
     tvdbId: els.tvdbId.value.trim(),
     tmdbId: els.tmdbId.value.trim(),
@@ -147,6 +150,7 @@ function loadConfig() {
 
   els.season.value = values.season;
   els.episodeOffset.value = values.episodeOffset;
+  els.numbering.value = values.numbering === 'absolute' ? 'absolute' : 'season';
   for (const [key, node] of Object.entries(CHECKBOXES)) {
     if (typeof values[key] === 'boolean') node.checked = values[key];
   }
@@ -163,6 +167,21 @@ function loadConfig() {
   els.proxyUrl.value = getProxyUrl();
   updateRefHint();
   updateOutputMode();
+  updateNumberingHint();
+}
+
+function updateNumberingHint() {
+  if (els.numbering.value === 'absolute') {
+    const supplied = currentSource() === 'wikipedia';
+    els.numberingHint.textContent = supplied
+      ? 'One continuous run in Season 01, using Wikipedia\'s "No. overall". '
+        + 'The real season and episode go into displayseason/displayepisode. '
+        + 'Specials stay in Season 00.'
+      : `${SOURCE_CLASSES[currentSource()].label} publishes no series-wide numbers, `
+        + 'so episodes are counted in air order. Specials stay in Season 00.';
+  } else {
+    els.numberingHint.textContent = 'Season folders, numbered as the source does.';
+  }
 }
 
 function updateRefHint() {
@@ -354,9 +373,15 @@ function bind() {
   for (const radio of document.querySelectorAll('input[name="source"]')) {
     radio.addEventListener('change', () => {
       updateRefHint();
+      updateNumberingHint();
       saveConfig();
     });
   }
+
+  els.numbering.addEventListener('change', () => {
+    updateNumberingHint();
+    saveConfig();
+  });
 
   for (const radio of document.querySelectorAll('input[name="output-mode"]')) {
     radio.addEventListener('change', () => {

@@ -173,6 +173,10 @@ export function newEpisode(values = {}) {
   return {
     season: null,
     number: 0,
+    // The source's own series-wide number, where it publishes one. Wikipedia's
+    // "No. overall" column is the reliable case; null means the exporter has to
+    // count for itself.
+    number_absolute: null,
     title: '',
     title_japanese: '',
     title_romaji: '',

@@ -14,6 +14,10 @@ export const DEFAULT_OPTIONS = {
   allSeasons: false,
   showName: '',
   episodeOffset: 0,
+  // 'season'   — file as the source numbers it: S02E11 in Season 02
+  // 'absolute' — one continuous run: S01E37 in Season 01, with the real
+  //              season and episode kept in displayseason/displayepisode
+  numbering: 'season',
   preferEnglish: true,
   fetchSynopsis: false,
   writeTvshow: true,
@@ -202,25 +206,67 @@ export async function runExport(options, {
     }
   }
 
+  const absolute = opts.numbering === 'absolute';
+
+  // Absolute numbering: walk the real seasons in order and assign a continuous
+  // run, preferring the source's own series-wide number where it publishes one
+  // (Wikipedia's "No. overall"), because a recomputed count disagrees with it
+  // wherever the article counts recaps or specials differently.
+  //
+  // Specials are excluded from the run and stay in Season 00 with their own
+  // numbers — folding them in would shift every later episode.
+  const absoluteNumbers = new Map();
+  if (absolute) {
+    let running = 0;
+    let sourceSupplied = 0;
+    for (const season of seasonKeys.filter((s) => s > 0)) {
+      for (const episode of grouped.get(season)) {
+        running += 1;
+        const supplied = episode.number_absolute;
+        if (Number.isInteger(supplied)) sourceSupplied += 1;
+        absoluteNumbers.set(episode, Number.isInteger(supplied) ? supplied : running);
+      }
+    }
+    const specials = grouped.has(0) ? grouped.get(0).length : 0;
+    log(
+      `  absolute numbering: ${running} episodes as Season 01` +
+        (specials ? `, ${specials} specials left in Season 00` : ''),
+    );
+    if (running && !sourceSupplied) {
+      log(`    ${source.label} publishes no series-wide numbers, so these are counted in air order`);
+    } else if (sourceSupplied < running) {
+      log(`    ${sourceSupplied}/${running} came from ${source.label}; the rest were counted`);
+    }
+  }
+
   const total = seasonKeys.reduce((sum, s) => sum + grouped.get(s).length, 0);
+  const seasonNfoWritten = new Set();
   let done = 0;
 
   for (const season of seasonKeys) {
     const seasonEpisodes = grouped.get(season);
-    const folder = seasonFolderName(season);
-    result.seasonFolders.push(folder);
+    // Under absolute numbering every real season collapses into Season 01.
+    const filedSeason = absolute && season > 0 ? 1 : season;
+    const folder = seasonFolderName(filedSeason);
+    if (!result.seasonFolders.includes(folder)) result.seasonFolders.push(folder);
 
-    if (opts.writeSeasonNfo) {
+    // Under absolute numbering several real seasons share one folder, so its
+    // season.nfo is written once rather than rewritten per season.
+    if (opts.writeSeasonNfo && !seasonNfoWritten.has(folder)) {
+      seasonNfoWritten.add(folder);
       const path = `${folderName}/${folder}/season.nfo`;
       if (!opts.overwrite && (await sink.exists(path))) {
         log(`Skipped ${folder}/season.nfo (already exists)`);
       } else {
-        await sink.writeText(path, renderXml(buildSeasonXml(show, season)));
+        await sink.writeText(path, renderXml(buildSeasonXml(show, filedSeason)));
         log(`Wrote ${folder}/season.nfo`);
       }
     }
 
-    log(`Writing ${seasonEpisodes.length} episode NFO files to ${folderName}/${folder} ...`);
+    log(
+      `Writing ${seasonEpisodes.length} episode NFO files to ${folderName}/${folder}` +
+        (filedSeason !== season ? ` (season ${season})` : '') + ' ...',
+    );
     let written = 0;
 
     for (let index = 0; index < seasonEpisodes.length; index += 1) {
@@ -230,15 +276,26 @@ export async function runExport(options, {
 
       const rawNumber = episode.number;
       const baseNumber = Number.isInteger(rawNumber) ? rawNumber : index + 1;
-      let episodeNumber = baseNumber + opts.episodeOffset;
+
+      // What the file is numbered as. Specials keep their own numbers in both
+      // modes; only real seasons join the absolute run.
+      const collapsed = absolute && season > 0;
+      const filedBase = collapsed
+        ? (absoluteNumbers.get(episode) ?? baseNumber)
+        : baseNumber;
+      let episodeNumber = filedBase + opts.episodeOffset;
       if (episodeNumber < 0) episodeNumber = index + 1 + opts.episodeOffset;
 
-      const name = `${safeFilename(showTitle)} S${pad2(season)}E${pad2(episodeNumber)}.nfo`;
+      // What Emby shows. The offset is a filing correction, so it deliberately
+      // does not move the real season/episode the source reported.
+      const display = collapsed ? { season, episode: baseNumber } : null;
+
+      const name = `${safeFilename(showTitle)} S${pad2(filedSeason)}E${pad2(episodeNumber)}.nfo`;
       const path = `${folderName}/${folder}/${name}`;
 
       if (!opts.overwrite && (await sink.exists(path))) {
         result.episodesSkipped += 1;
-        progress(done, total, `Skipped S${pad2(season)}E${pad2(episodeNumber)}`);
+        progress(done, total, `Skipped S${pad2(filedSeason)}E${pad2(episodeNumber)}`);
         continue;
       }
 
@@ -250,7 +307,10 @@ export async function runExport(options, {
       await sink.writeText(
         path,
         renderXml(
-          buildEpisodeXml(episode, show, showTitle, season, episodeNumber, source.hasSeasons),
+          buildEpisodeXml(
+            episode, show, showTitle, filedSeason, episodeNumber, source.hasSeasons,
+            display, season,
+          ),
         ),
       );
       result.episodesWritten += 1;
@@ -258,7 +318,7 @@ export async function runExport(options, {
       progress(
         done,
         total,
-        `S${pad2(season)}E${pad2(episodeNumber)} - ${cleanText(episode.title).slice(0, 38)}`,
+        `S${pad2(filedSeason)}E${pad2(episodeNumber)} - ${cleanText(episode.title).slice(0, 38)}`,
       );
     }
     result.perSeason[season] = written;
