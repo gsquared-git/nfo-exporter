@@ -53,7 +53,7 @@ function corsHeaders(request, env) {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Proxy-Accept',
     'Access-Control-Max-Age': '86400',
     'Access-Control-Expose-Headers': 'X-Proxy-Status, X-Proxy-Url',
     Vary: 'Origin',
