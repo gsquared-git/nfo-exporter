@@ -3,8 +3,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 py = json.load(io.open(os.path.join(HERE, 'py.json'), encoding='utf-8'))
 js = json.load(io.open(os.path.join(HERE, 'js.json'), encoding='utf-8'))
 
-# The JS Show object has camelCase getters serialised out; compare only the
-# fields the Python dataclass has.
 def norm(v):
     if isinstance(v, dict):
         return {k: norm(x) for k, x in v.items()}
@@ -14,11 +12,28 @@ def norm(v):
         return list(v)
     return v
 
+
+def project(want, got):
+    """
+    Drop fields the JS side has and the Python side does not, at any depth.
+
+    Two legitimate sources of extras: the JS Show carries camelCase getters that
+    the Python dataclass has no equivalent for, and the web version tracks
+    number_absolute on episodes to support absolute numbering, which the desktop
+    tool has no concept of. Everything Python *does* publish must still match
+    exactly — this only ignores additions, never differences.
+    """
+    if isinstance(want, dict) and isinstance(got, dict):
+        return {k: project(want[k], got[k]) for k in got if k in want}
+    if isinstance(want, list) and isinstance(got, list):
+        return [project(want[i], g) if i < len(want) else g for i, g in enumerate(got)]
+    return got
+
+
 fails = []
 for key in sorted(set(py) | set(js)):
     a, b = norm(py.get(key)), norm(js.get(key))
-    if isinstance(a, dict) and isinstance(b, dict):
-        b = {k: v for k, v in b.items() if k in a}
+    b = project(a, b)
     if a != b:
         fails.append(key)
         print('=== MISMATCH:', key)

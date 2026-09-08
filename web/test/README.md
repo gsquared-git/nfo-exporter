@@ -9,6 +9,8 @@ cd web/test
 python ref.py      # Python tool  -> py.json (+ entities.json for the Node stub)
 node port.mjs      # JS port      -> js.json
 python diff.py     # compares, exits non-zero on any mismatch
+
+node numbering.mjs # per-season vs absolute numbering (web-only, no Python side)
 ```
 
 Requires Python 3.9+ and Node 18+. Nothing to install.
@@ -27,6 +29,18 @@ Requires Python 3.9+ and Node 18+. Nothing to install.
 The XML comparison is the important one: it is a character-for-character diff of
 the finished files, so indentation, attribute order, entity escaping and the
 `uniqueid` / `default="true"` logic all have to match.
+
+`diff.py` ignores fields the JS side adds and Python has no equivalent for — the
+`Show` getters, and `number_absolute` on episodes — but never ignores a
+*difference* in anything Python does publish.
+
+`numbering.mjs` is separate because the desktop tool has no absolute mode, so
+there is nothing to diff against. It runs full exports through `ZipSink` and
+asserts the resulting archive paths, then checks the XML directly: that an
+episode filed as `S01E26` carries `<displayseason>2</displayseason>`, that its
+`uniqueid` stays keyed on the real season so re-exporting under a different mode
+does not change its identity, and that an episode offset moves the filed number
+without moving the displayed one.
 
 ## Fixtures
 
