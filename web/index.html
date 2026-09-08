@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emby NFO Exporter</title>
+<meta name="description" content="Scrape episode metadata from MyAnimeList, TheTVDB or Wikipedia and write Emby-compatible NFO files straight into a folder.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">📺</span>
+    <div>
+      <h1>Emby NFO Exporter</h1>
+      <p class="sub">MyAnimeList &middot; TheTVDB &middot; Wikipedia &rarr; Emby-compatible NFO files</p>
+    </div>
+  </div>
+  <button type="button" id="settings-toggle" class="ghost" aria-expanded="false">Settings</button>
+</header>
+
+<div id="unsupported" class="banner error" hidden>
+  <strong>This browser can't write to a folder.</strong>
+  The File System Access API is Chromium-only. Use Chrome, Edge, Brave or Opera —
+  Firefox and Safari have not shipped it.
+</div>
+
+<section id="settings" class="panel settings" hidden>
+  <h2>Settings</h2>
+  <label class="field">
+    <span class="label">CORS proxy URL</span>
+    <input type="url" id="proxy-url" placeholder="https://nfo-proxy.your-name.workers.dev" spellcheck="false">
+    <span class="hint">
+      MyAnimeList and TheTVDB send no <code>Access-Control-Allow-Origin</code> header, so a
+      browser can't read them directly. Deploy <code>worker/nfo-proxy.js</code> to Cloudflare
+      Workers and paste its URL here. Wikipedia needs no proxy.
+    </span>
+  </label>
+  <div class="row">
+    <button type="button" id="proxy-test" class="secondary">Test proxy</button>
+    <span id="proxy-status" class="status" role="status"></span>
+  </div>
+</section>
+
+<main>
+  <section class="panel">
+    <h2>1 &middot; Find the series</h2>
+
+    <div class="sources" role="radiogroup" aria-label="Data source">
+      <label class="source">
+        <input type="radio" name="source" value="mal" checked>
+        <span class="source-body">
+          <strong>MyAnimeList</strong>
+          <em>Richest anime metadata, per-language cast, episode scores. No season numbering.</em>
+        </span>
+      </label>
+      <label class="source">
+        <input type="radio" name="source" value="tvdb">
+        <span class="source-body">
+          <strong>TheTVDB</strong>
+          <em>Real season numbering, specials as Season 00, TVDB/IMDB/TMDB ids for Emby.</em>
+        </span>
+      </label>
+      <label class="source">
+        <input type="radio" name="source" value="wikipedia">
+        <span class="source-body">
+          <strong>Wikipedia</strong>
+          <em>English titles, directors, writers, and free episode plots. Needs no proxy.</em>
+        </span>
+      </label>
+    </div>
+
+    <form id="search-form" class="row search-row">
+      <input type="search" id="search-term" placeholder="Search for a show…" autocomplete="off" spellcheck="false">
+      <button type="submit" id="search-button">Search</button>
+    </form>
+
+    <ul id="results" class="results" hidden></ul>
+    <p id="search-status" class="status" role="status"></p>
+
+    <label class="field">
+      <span class="label" id="ref-label">MAL anime ID or myanimelist.net URL</span>
+      <input type="text" id="ref" placeholder="e.g. 16498" spellcheck="false">
+    </label>
+  </section>
+
+  <section class="panel">
+    <h2>2 &middot; Choose the output folder</h2>
+    <div class="row">
+      <button type="button" id="pick-folder">Choose folder…</button>
+      <span id="folder-name" class="status">No folder chosen</span>
+    </div>
+    <p class="hint">
+      Files are written straight into this folder as
+      <code>&lt;Show&gt; (Year)/Season 01/&lt;Show&gt; S01E01.nfo</code>. The browser remembers
+      the folder between visits; it will ask you to confirm access once each session.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>3 &middot; Options</h2>
+
+    <div class="options">
+      <label class="field">
+        <span class="label">Show name override</span>
+        <input type="text" id="show-name" placeholder="Leave blank to use the source's title">
+        <span class="hint">Becomes the folder name verbatim, with no year appended.</span>
+      </label>
+
+      <label class="field narrow">
+        <span class="label">Season</span>
+        <input type="number" id="season" value="1" min="0" step="1">
+      </label>
+
+      <label class="field narrow">
+        <span class="label">Episode offset</span>
+        <input type="number" id="episode-offset" value="0" step="1">
+      </label>
+
+      <label class="field narrow">
+        <span class="label">Cast language</span>
+        <select id="cast-language"></select>
+      </label>
+
+      <label class="field narrow">
+        <span class="label">TVDB id</span>
+        <input type="text" id="tvdb-id" spellcheck="false">
+      </label>
+
+      <label class="field narrow">
+        <span class="label">TMDB id</span>
+        <input type="text" id="tmdb-id" spellcheck="false">
+      </label>
+
+      <label class="field narrow">
+        <span class="label">AniDB id</span>
+        <input type="text" id="anidb-id" spellcheck="false">
+      </label>
+    </div>
+
+    <div class="checks">
+      <label><input type="checkbox" id="all-seasons"> Write every season the source has</label>
+      <label><input type="checkbox" id="prefer-english" checked> Prefer English titles</label>
+      <label><input type="checkbox" id="fetch-synopsis"> Fetch per-episode detail <em>(one page each — slow)</em></label>
+      <label><input type="checkbox" id="write-tvshow" checked> Write tvshow.nfo</label>
+      <label><input type="checkbox" id="write-season-nfo" checked> Write season.nfo</label>
+      <label><input type="checkbox" id="include-cast" checked> Include cast</label>
+      <label><input type="checkbox" id="download-poster"> Download poster as folder.jpg</label>
+      <label><input type="checkbox" id="overwrite" checked> Overwrite existing files</label>
+      <label><input type="checkbox" id="year-in-folder" checked> Put the year in the folder name</label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="row actions">
+      <button type="button" id="export" class="primary">Export NFO files</button>
+      <button type="button" id="cancel" class="secondary" disabled>Cancel</button>
+      <span id="progress-label" class="status"></span>
+    </div>
+    <div class="progress"><div id="progress-bar"></div></div>
+    <pre id="log" class="log" aria-live="polite"></pre>
+  </section>
+</main>
+
+<footer>
+  <p>
+    Ported from the Python desktop tool. All three sources are public and keyless;
+    nothing you enter leaves your browser except the page requests themselves.
+  </p>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
